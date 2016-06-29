@@ -12,6 +12,7 @@ import (
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 	"github.com/derekparker/delve/service/debugger"
+	"io"
 )
 
 type ServerImpl struct {
@@ -87,13 +88,28 @@ func (s *ServerImpl) Run() error {
 					panic(err)
 				}
 			}
-			go rpcs.ServeCodec(jsonrpc.NewServerCodec(c))
+			// MAHDI: Modified using PR #520 (Issue #523) on https://github.com/derekparker/delve
+			// https://github.com/derekparker/delve/pull/520/files#diff-ef4dee432332f81f2fbd37326df20715
+			//go rpcs.ServeCodec(jsonrpc.NewServerCodec(c))
+			go serveRequestsSynchronously(rpcs, c)
 			if !s.s.config.AcceptMulti {
 				break
 			}
 		}
 	}()
 	return nil
+}
+
+func serveRequestsSynchronously(server *grpc.Server, connection io.ReadWriteCloser) {
+
+	codec := jsonrpc.NewServerCodec(connection)
+	for {
+		err := server.ServeRequest(codec)
+		if err != nil {
+				break
+			}
+	}
+	codec.Close()
 }
 
 func (s *RPCServer) ProcessPid(arg1 interface{}, pid *int) error {
